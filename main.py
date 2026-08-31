@@ -7,6 +7,7 @@ and real-world APIs (Open-Meteo, OpenStreetMap Nominatim, Frankfurter, Wikipedia
 import os
 import re
 import sys
+import time
 import math
 import json
 import html
