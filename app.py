@@ -64,22 +64,6 @@ async def handle_chat(req: ChatRequest):
         
     start_time = time.time()
     
-    # Custom logger to capture tool execution traces for the UI
-    captured_traces = []
-    
-    # Monkey patch log_tool_call temporarily for this request to capture traces
-    original_log_tool_call = agent_module.log_tool_call
-    def intercepting_log_tool_call(name: str, args: dict, result: Any):
-        original_log_tool_call(name, args, result)
-        captured_traces.append({
-            "name": name,
-            "args": args,
-            "result": result,
-            "timestamp": time.strftime("%H:%M:%S")
-        })
-        
-    agent_module.log_tool_call = intercepting_log_tool_call
-    
     try:
         initial_state = {
             "messages": [agent_module.HumanMessage(content=req.message)],
@@ -96,8 +80,34 @@ async def handle_chat(req: ChatRequest):
         result_state = agent_graph.invoke(initial_state)
         elapsed_sec = round(time.time() - start_time, 2)
         
-        final_message = result_state["messages"][-1]
+        messages = result_state.get("messages", [])
+        final_message = messages[-1] if messages else agent_module.AIMessage(content="No response generated.")
         reply_content = str(final_message.content)
+        
+        # Deterministically extract tool execution traces from message history
+        captured_traces = []
+        tool_results_by_id = {}
+        
+        for msg in messages:
+            if isinstance(msg, agent_module.ToolMessage):
+                tool_results_by_id[msg.tool_call_id] = msg.content
+                
+        for msg in messages:
+            if isinstance(msg, agent_module.AIMessage) and getattr(msg, "tool_calls", None):
+                for tc in msg.tool_calls:
+                    tc_id = tc.get("id")
+                    raw_res = tool_results_by_id.get(tc_id, "")
+                    try:
+                        parsed_res = json.loads(raw_res)
+                    except Exception:
+                        parsed_res = raw_res
+                        
+                    captured_traces.append({
+                        "name": tc.get("name"),
+                        "args": tc.get("args", {}),
+                        "result": parsed_res,
+                        "timestamp": time.strftime("%H:%M:%S")
+                    })
         
         budget_info = {
             "user_budget": result_state.get("user_budget"),
@@ -119,8 +129,7 @@ async def handle_chat(req: ChatRequest):
     except Exception as e:
         print(f"[API ERROR] {e}", flush=True)
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        agent_module.log_tool_call = original_log_tool_call
+
 
 # Serve Static UI files
 static_dir = os.path.join(os.path.dirname(__file__), "static")
