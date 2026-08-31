@@ -146,14 +146,29 @@ if not os.path.exists(static_dir):
 
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
+@app.get("/style.css")
+async def get_style_css():
+    css_path = os.path.join(static_dir, "style.css")
+    if os.path.exists(css_path):
+        return FileResponse(css_path, media_type="text/css")
+    raise HTTPException(status_code=404, detail="style.css not found")
+
+@app.get("/app.js")
+async def get_app_js():
+    js_path = os.path.join(static_dir, "app.js")
+    if os.path.exists(js_path):
+        return FileResponse(js_path, media_type="application/javascript")
+    raise HTTPException(status_code=404, detail="app.js not found")
+
 @app.get("/")
 async def get_index():
     index_path = os.path.join(static_dir, "index.html")
     if os.path.exists(index_path):
-        return FileResponse(index_path)
+        return FileResponse(index_path, media_type="text/html")
     return JSONResponse({"message": "Static index.html not yet created."})
 
 if __name__ == "__main__":
     import uvicorn
     print("\nStarting Trip Planner Agent Web UI on http://127.0.0.1:8000 ...\n", flush=True)
     uvicorn.run(app, host="127.0.0.1", port=8000)
+
