@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TripPlanner Agent — LangGraph Travel AI</title>
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons for clean UI elements -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="dark-theme">
+    <div class="app-layout">
+        <!-- SIDEBAR (ChatGPT Style) -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <button class="new-chat-btn" id="newChatBtn">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>New Trip Plan</span>
+                </button>
+                <button class="icon-btn close-sidebar-btn" id="closeSidebarBtn" title="Close sidebar">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+            </div>
+
+            <div class="history-section">
+                <div class="section-label">Recent Trips</div>
+                <div class="history-list" id="historyList">
+                    <!-- Dynamic chat history items -->
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="agent-info-card">
+                    <div class="model-badge">
+                        <span class="pulse-dot"></span>
+                        <span>Groq openai/gpt-oss-120b</span>
+                    </div>
+                    <div class="agent-framework">
+                        <i class="fa-solid fa-diagram-project"></i> LangGraph ToolNode Agent
+                    </div>
+                </div>
+                <div class="api-status-list">
+                    <div class="api-tag"><i class="fa-solid fa-plane"></i> Amadeus / Geo</div>
+                    <div class="api-tag"><i class="fa-solid fa-hotel"></i> OpenStreetMap</div>
+                    <div class="api-tag"><i class="fa-solid fa-cloud-sun"></i> Open-Meteo</div>
+                    <div class="api-tag"><i class="fa-solid fa-coins"></i> Frankfurter</div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- MAIN CHAT AREA -->
+        <main class="main-content">
+            <!-- Top Navigation Bar -->
+            <header class="top-nav">
+                <div class="nav-left">
+                    <button class="icon-btn mobile-menu-btn" id="openSidebarBtn" title="Open sidebar">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <div class="header-title">
+                        <span class="brand-logo"><i class="fa-solid fa-compass"></i></span>
+                        <span class="brand-name">TripPlanner AI</span>
+                        <span class="brand-sub">LangGraph Agent</span>
+                    </div>
+                </div>
+                <div class="nav-right">
+                    <div class="status-indicator online">
+                        <i class="fa-solid fa-circle"></i>
+                        <span>Live Global APIs</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Chat Messages Container -->
+            <div class="chat-container" id="chatContainer">
+                <!-- HERO / EMPTY STATE -->
+                <div class="hero-welcome" id="heroWelcome">
+                    <div class="hero-icon">
+                        <i class="fa-solid fa-earth-americas"></i>
+                    </div>
+                    <h1>Where would you like to travel?</h1>
+                    <p class="hero-sub">I'm an autonomous LangGraph agent that searches real flights, live hotels, weather forecasts, and currency rates to build complete itineraries under your budget.</p>
+
+                    <div class="suggestion-grid">
+                        <div class="suggestion-card" data-prompt="Plan a 4-day trip from NYC to Lisbon in October under $1200">
+                            <div class="card-icon"><i class="fa-solid fa-wine-glass"></i></div>
+                            <div class="card-title">Lisbon Autumn Getaway</div>
+                            <div class="card-desc">4-day trip from NYC to Lisbon under $1,200 budget</div>
+                        </div>
+
+                        <div class="suggestion-card" data-prompt="What's the weather like in Tokyo next week?">
+                            <div class="card-icon"><i class="fa-solid fa-cloud-sun-rain"></i></div>
+                            <div class="card-title">Tokyo Weather Inquiry</div>
+                            <div class="card-desc">7-day forecast with outdoor vs indoor travel advice</div>
+                        </div>
+
+                        <div class="suggestion-card" data-prompt="Plan a 4-day trip from London to Paris in October under a grand">
+                            <div class="card-icon"><i class="fa-solid fa-landmark"></i></div>
+                            <div class="card-title">Paris Cultural Weekend</div>
+                            <div class="card-desc">4 days from London to Paris under a grand ($1,000)</div>
+                        </div>
+
+                        <div class="suggestion-card" data-prompt="Plan a 3-day budget trip from Berlin to Rome in November under $600">
+                            <div class="card-icon"><i class="fa-solid fa-monument"></i></div>
+                            <div class="card-title">Rome Historic Escape</div>
+                            <div class="card-desc">3 days from Berlin to Rome with budget accommodation</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Active Conversation Messages -->
+                <div class="messages-feed" id="messagesFeed"></div>
+            </div>
+
+            <!-- Bottom Input Box Area -->
+            <div class="input-container">
+                <form class="chat-form" id="chatForm">
+                    <div class="input-wrapper">
+                        <textarea 
+                            id="promptInput" 
+                            placeholder="Ask for a trip plan, flights, hotels, weather, or budget estimate..." 
+                            rows="1" 
+                            autofocus
+                        ></textarea>
+                        <button type="submit" id="sendBtn" class="send-btn" disabled>
+                            <i class="fa-solid fa-arrow-up"></i>
+                        </button>
+                    </div>
+                </form>
+                <div class="input-footer-note">
+                    TripPlanner Agent uses LangGraph prebuilt ToolNode, Groq LLM, and live Open-Meteo & OpenStreetMap APIs.
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Custom Script -->
+    <script src="/static/app.js"></script>
+</body>
+</html>
