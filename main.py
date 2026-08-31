@@ -601,7 +601,7 @@ class AgentState(TypedDict):
 # ==========================================
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
@@ -612,7 +612,7 @@ def get_llm(model_name: Optional[str] = None):
     """Returns ChatOpenAI configured for OpenRouter if OPENROUTER_API_KEY is set, else ChatGroq."""
     openrouter_key = os.getenv("OPENROUTER_API_KEY")
     if openrouter_key:
-        chosen_model = model_name or os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct")
+        chosen_model = model_name or os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
         return ChatOpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=openrouter_key,
@@ -621,6 +621,7 @@ def get_llm(model_name: Optional[str] = None):
             timeout=60.0,
             max_retries=3
         )
+
     
     groq_key = os.getenv("GROQ_API_KEY")
     if groq_key:

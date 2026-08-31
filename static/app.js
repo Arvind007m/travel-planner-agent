@@ -250,13 +250,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (err) {
             loadingRow.remove();
-            const errorMsg = `**Error processing request**: ${err.message}\n\nPlease check your Groq API connection.`;
+            const errorMsg = `**Error processing request**: ${err.message}\n\nPlease check your LLM API connection or retry your request.`;
             appendMessage('assistant', errorMsg);
             if (currentThread) {
                 currentThread.messages.push({ role: 'assistant', content: errorMsg });
                 saveThreads();
             }
         }
+
 
 
         scrollToBottom();
