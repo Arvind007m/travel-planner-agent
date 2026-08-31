@@ -600,15 +600,20 @@ class AgentState(TypedDict):
 
 import time
 
-def invoke_llm_with_retry(runnable, input_data, max_retries=4):
-    """Executes a runnable with exponential backoff on rate limits."""
+def invoke_llm_with_retry(runnable, input_data, max_retries=5):
+    """Executes a runnable with exponential backoff on rate limits and connection errors."""
     for attempt in range(max_retries):
         try:
             return runnable.invoke(input_data)
         except Exception as e:
-            if ("429" in str(e) or "rate_limit" in str(e).lower() or "tokens per minute" in str(e).lower()) and attempt < max_retries - 1:
-                wait_sec = 3.0 * (attempt + 1)
-                print(f"\n\033[93m[RATE LIMIT BACKOFF]\033[0m Waiting {wait_sec}s for Groq token window...", flush=True)
+            err_str = str(e).lower()
+            is_rate_limit = "429" in err_str or "rate_limit" in err_str or "tokens per minute" in err_str or "tpm" in err_str
+            is_connection = "connection error" in err_str or "timeout" in err_str or "disconnected" in err_str or "503" in err_str or "502" in err_str or "500" in err_str or "apiconnectionerror" in err_str
+            
+            if (is_rate_limit or is_connection) and attempt < max_retries - 1:
+                wait_sec = 2.5 * (attempt + 1)
+                reason = "rate limit window" if is_rate_limit else "connection retry"
+                print(f"\n[RETRY BACKOFF] Waiting {wait_sec}s for Groq ({reason})...", flush=True)
                 time.sleep(wait_sec)
             else:
                 raise e
@@ -627,7 +632,7 @@ def extract_context_node(state: AgentState) -> dict:
     
     if api_key and user_msg_content:
         try:
-            llm = ChatGroq(model="openai/gpt-oss-120b", api_key=api_key, temperature=0.0)
+            llm = ChatGroq(model="openai/gpt-oss-120b", api_key=api_key, temperature=0.0, request_timeout=60.0, max_retries=3)
             extractor = llm.with_structured_output(BudgetExtraction)
             sys_msg = SystemMessage(content="You are a data extractor. Extract the total numeric travel budget in USD into user_budget (convert 'a grand' to 1000, '1.5k' to 1500). If no budget constraint is mentioned, set user_budget to null.")
             res = invoke_llm_with_retry(extractor, [sys_msg, HumanMessage(content=user_msg_content)])
@@ -656,8 +661,9 @@ def agent_node(state: AgentState) -> dict:
     if not api_key:
         raise ValueError("GROQ_API_KEY is not set.")
     
-    llm = ChatGroq(model="openai/gpt-oss-120b", api_key=api_key, temperature=0.0)
+    llm = ChatGroq(model="openai/gpt-oss-120b", api_key=api_key, temperature=0.0, request_timeout=60.0, max_retries=3)
     llm_with_tools = llm.bind_tools(ALL_TOOLS)
+
     
     system_prompt = (
         "You are an expert travel agent planner for a premier travel booking company.\n"
