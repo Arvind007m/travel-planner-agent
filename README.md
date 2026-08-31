@@ -1,8 +1,8 @@
 # Trip Planner Agent (trip-planner-agent)
 
-An autonomous, multi-tool travel planning agent built with **LangGraph**, **Groq API** (`openai/gpt-oss-120b`), **Live External APIs**, and a **ChatGPT-style Web Interface**.
+An autonomous, multi-tool travel planning agent built with **LangGraph**, **OpenRouter API** (`meta-llama/llama-3.3-70b-instruct`) / **Groq API**, **Live External APIs**, and a **ChatGPT-style Web Interface**.
 
-- **Live Production URL (Vercel)**: [https://travelagent-6cejz6glm-arvinds-projects-9209355d.vercel.app](https://travelagent-6cejz6glm-arvinds-projects-9209355d.vercel.app)
+- **Live Production URL (Vercel)**: [https://travelagent-5mozv6b5v-arvinds-projects-9209355d.vercel.app](https://travelagent-5mozv6b5v-arvinds-projects-9209355d.vercel.app)
 - **GitHub Repository**: [https://github.com/Arvind007m/travel-planner-agent](https://github.com/Arvind007m/travel-planner-agent)
 
 ---
@@ -15,7 +15,7 @@ The agent uses a compiled LangGraph state machine that extracts user constraints
 flowchart TD
     User([User Natural Language Request]) --> Extract[extract_context_node<br/>LLM Structured Output: BudgetExtraction]
     
-    Extract --> Agent[agent_node<br/>ChatGroq: openai/gpt-oss-120b]
+    Extract --> Agent[agent_node<br/>OpenRouter: meta-llama/llama-3.3-70b-instruct]
     
     Agent -->|Has Tool Calls & tool_call_count < 8| Tools[tools_execution_node<br/>Execute Live APIs & Capture Numeric Costs]
     
@@ -47,6 +47,10 @@ flowchart TD
 
 ## 2. Core Features
 
+### Multi-Provider LLM Engine (OpenRouter & Groq)
+- Primary support for **OpenRouter API** (`meta-llama/llama-3.3-70b-instruct`) providing high-speed tool calling and structured output extraction.
+- Automatic fallback support for **Groq API** (`openai/gpt-oss-120b`, `openai/gpt-oss-20b`).
+
 ### State-Backed Numeric Calculations
 - Replaced fragile free-text LLM re-parsing with dedicated state attributes (`flight_cost: Optional[float]`, `hotel_cost: Optional[float]`, `total_cost: Optional[float]`, `user_budget: Optional[float]`).
 - The `budget_check` node performs pure Python arithmetic (`total_cost = flight_cost + hotel_cost`) guarded against `None` values.
@@ -60,7 +64,6 @@ flowchart TD
 
 ### Safety Limits & Fault Tolerance
 - **Tool Invocations Cap**: Hard limit of 8 tool calls per execution to prevent recursive looping.
-- **Rate-Limit Resilience**: LLM invocations use exponential backoff (`invoke_llm_with_retry`) to handle Groq token rate limits.
 - **Date Normalization**: Natural language dates (`"October"`, `"Nov 3rd"`, `"next week"`, `"tomorrow"`) are normalized to ISO `YYYY-MM-DD` strings.
 
 ---
@@ -92,7 +95,7 @@ The project includes a web application built with HTML5, Vanilla CSS, and JavaSc
 
 ### Prerequisites
 - Python 3.10+
-- Groq API Key
+- OpenRouter API Key (or Groq API Key)
 
 ### Installation & Environment Configuration
 1. Clone the repository:
@@ -108,7 +111,11 @@ The project includes a web application built with HTML5, Vanilla CSS, and JavaSc
 
 3. Create a `.env` file in the root directory:
    ```env
-   GROQ_API_KEY=gsk_your_groq_api_key_here
+   OPENROUTER_API_KEY=sk-or-v1-...
+   OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct
+   
+   # Optional: Groq fallback API key
+   # GROQ_API_KEY=gsk_...
    
    # Optional: Live Amadeus GDS Airfare Sandbox
    # AMADEUS_CLIENT_ID=your_amadeus_api_key

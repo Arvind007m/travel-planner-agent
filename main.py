@@ -25,6 +25,7 @@ if sys.stdout.encoding != 'utf-8':
 from pydantic import BaseModel, Field
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
 from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
@@ -599,21 +600,44 @@ class AgentState(TypedDict):
 # 4. GRAPH NODES & DETERMINISTIC CONTROL
 # ==========================================
 
-PRIMARY_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct")
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 FALLBACK_MODEL = "openai/gpt-oss-20b"
 
 
-def get_llm(model_name: str = PRIMARY_MODEL):
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY is not set.")
-    return ChatGroq(model=model_name, api_key=api_key, temperature=0.0, request_timeout=60.0, max_retries=3)
+def get_llm(model_name: Optional[str] = None):
+    """Returns ChatOpenAI configured for OpenRouter if OPENROUTER_API_KEY is set, else ChatGroq."""
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+    if openrouter_key:
+        chosen_model = model_name or os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct")
+        return ChatOpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=openrouter_key,
+            model=chosen_model,
+            temperature=0.0,
+            timeout=60.0,
+            max_retries=3
+        )
+    
+    groq_key = os.getenv("GROQ_API_KEY")
+    if groq_key:
+        chosen_model = model_name or GROQ_MODEL
+        return ChatGroq(
+            model=chosen_model,
+            api_key=groq_key,
+            temperature=0.0,
+            request_timeout=60.0,
+            max_retries=3
+        )
+        
+    raise ValueError("Neither OPENROUTER_API_KEY nor GROQ_API_KEY is set in environment.")
 
 
 def invoke_llm_with_retry(runnable, input_data, max_retries=5, fallback_runnable=None):
-    """Executes a runnable with exponential backoff on rate limits and connection errors.
-    If a rate limit is exceeded on the primary model, switches to fallback model.
-    """
+    """Executes a runnable with exponential backoff on rate limits and connection errors."""
     current_runnable = runnable
     for attempt in range(max_retries):
         try:
@@ -624,7 +648,7 @@ def invoke_llm_with_retry(runnable, input_data, max_retries=5, fallback_runnable
             is_connection = "connection error" in err_str or "timeout" in err_str or "disconnected" in err_str or "503" in err_str or "502" in err_str or "500" in err_str or "apiconnectionerror" in err_str
             
             if is_rate_limit and fallback_runnable is not None and current_runnable != fallback_runnable:
-                print(f"\n[MODEL FALLBACK] Switching from {PRIMARY_MODEL} to {FALLBACK_MODEL} due to Groq quota limit...", flush=True)
+                print(f"\n[MODEL FALLBACK] Switching to fallback model due to quota limit...", flush=True)
                 current_runnable = fallback_runnable
                 time.sleep(1.0)
                 continue
@@ -632,7 +656,7 @@ def invoke_llm_with_retry(runnable, input_data, max_retries=5, fallback_runnable
             if (is_rate_limit or is_connection) and attempt < max_retries - 1:
                 wait_sec = 2.0 * (attempt + 1)
                 reason = "rate limit window" if is_rate_limit else "connection retry"
-                print(f"\n[RETRY BACKOFF] Waiting {wait_sec}s for Groq ({reason})...", flush=True)
+                print(f"\n[RETRY BACKOFF] Waiting {wait_sec}s for LLM API ({reason})...", flush=True)
                 time.sleep(wait_sec)
             else:
                 raise e
@@ -646,25 +670,22 @@ def extract_context_node(state: AgentState) -> dict:
             user_msg_content = str(msg.content)
             break
 
-    api_key = os.getenv("GROQ_API_KEY")
     extracted_budget = None
     
-    if api_key and user_msg_content:
+    if user_msg_content:
         try:
-            primary_llm = get_llm(PRIMARY_MODEL)
-            fallback_llm = get_llm(FALLBACK_MODEL)
-            
+            primary_llm = get_llm()
             extractor = primary_llm.with_structured_output(BudgetExtraction)
-            fallback_extractor = fallback_llm.with_structured_output(BudgetExtraction)
             
             sys_msg = SystemMessage(content="You are a data extractor. Extract the total numeric travel budget in USD into user_budget (convert 'a grand' to 1000, '1.5k' to 1500). If no budget constraint is mentioned, set user_budget to null.")
-            res = invoke_llm_with_retry(extractor, [sys_msg, HumanMessage(content=user_msg_content)], fallback_runnable=fallback_extractor)
+            res = invoke_llm_with_retry(extractor, [sys_msg, HumanMessage(content=user_msg_content)])
             if isinstance(res, BudgetExtraction):
                 extracted_budget = res.user_budget
             elif isinstance(res, dict):
                 extracted_budget = res.get("user_budget")
         except Exception as e:
             print(f"[BUDGET EXTRACTION WARNING] {e}", flush=True)
+
 
     return {
         "user_budget": extracted_budget,
@@ -679,14 +700,9 @@ def extract_context_node(state: AgentState) -> dict:
 
 
 def agent_node(state: AgentState) -> dict:
-    """Invokes Groq LLM bound with live tools and resets retry_pending flag."""
-    primary_llm = get_llm(PRIMARY_MODEL)
-    fallback_llm = get_llm(FALLBACK_MODEL)
-    
-    llm_with_tools = primary_llm.bind_tools(ALL_TOOLS)
-    fallback_with_tools = fallback_llm.bind_tools(ALL_TOOLS)
-
-
+    """Invokes LLM bound with live tools and resets retry_pending flag."""
+    llm = get_llm()
+    llm_with_tools = llm.bind_tools(ALL_TOOLS)
     
     system_prompt = (
         "You are an expert travel agent planner for a premier travel booking company.\n"
@@ -702,12 +718,13 @@ def agent_node(state: AgentState) -> dict:
     if not any(isinstance(m, SystemMessage) for m in messages):
         messages = [SystemMessage(content=system_prompt)] + list(messages)
     
-    response = invoke_llm_with_retry(llm_with_tools, messages, fallback_runnable=fallback_with_tools)
+    response = invoke_llm_with_retry(llm_with_tools, messages)
     
     return {
         "messages": [response],
         "retry_pending": False  # Cleared upon agent execution
     }
+
 
 
 

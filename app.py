@@ -48,15 +48,19 @@ class ToolTraceItem(BaseModel):
 
 @app.get("/api/health")
 async def health_check():
+    has_openrouter = bool(os.getenv("OPENROUTER_API_KEY"))
     has_groq = bool(os.getenv("GROQ_API_KEY"))
     has_amadeus = bool(os.getenv("AMADEUS_CLIENT_ID") and os.getenv("AMADEUS_CLIENT_SECRET"))
+    active_provider = "OpenRouter (meta-llama/llama-3.3-70b-instruct)" if has_openrouter else "Groq"
     return {
         "status": "healthy",
-        "llm_model": "openai/gpt-oss-120b (with auto-fallback)",
+        "llm_provider": active_provider,
+        "openrouter_connected": has_openrouter,
         "groq_connected": has_groq,
         "amadeus_connected": has_amadeus,
         "live_apis": ["Open-Meteo", "OpenStreetMap Nominatim", "Frankfurter", "Wikipedia"]
     }
+
 
 @app.post("/api/chat")
 async def handle_chat(req: ChatRequest):
