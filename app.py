@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 
 # Load environment
 load_dotenv()
@@ -51,7 +52,7 @@ async def health_check():
     has_amadeus = bool(os.getenv("AMADEUS_CLIENT_ID") and os.getenv("AMADEUS_CLIENT_SECRET"))
     return {
         "status": "healthy",
-        "llm_model": "openai/gpt-oss-120b",
+        "llm_model": "openai/gpt-oss-120b (with auto-fallback)",
         "groq_connected": has_groq,
         "amadeus_connected": has_amadeus,
         "live_apis": ["Open-Meteo", "OpenStreetMap Nominatim", "Frankfurter", "Wikipedia"]
@@ -66,7 +67,7 @@ async def handle_chat(req: ChatRequest):
     
     try:
         initial_state = {
-            "messages": [agent_module.HumanMessage(content=req.message)],
+            "messages": [HumanMessage(content=req.message)],
             "user_budget": None,
             "flight_cost": None,
             "hotel_cost": None,
@@ -81,7 +82,7 @@ async def handle_chat(req: ChatRequest):
         elapsed_sec = round(time.time() - start_time, 2)
         
         messages = result_state.get("messages", [])
-        final_message = messages[-1] if messages else agent_module.AIMessage(content="No response generated.")
+        final_message = messages[-1] if messages else AIMessage(content="No response generated.")
         reply_content = str(final_message.content)
         
         # Deterministically extract tool execution traces from message history
@@ -89,11 +90,11 @@ async def handle_chat(req: ChatRequest):
         tool_results_by_id = {}
         
         for msg in messages:
-            if isinstance(msg, agent_module.ToolMessage):
-                tool_results_by_id[msg.tool_call_id] = msg.content
+            if isinstance(msg, ToolMessage):
+                tool_results_by_id[getattr(msg, "tool_call_id", "")] = msg.content
                 
         for msg in messages:
-            if isinstance(msg, agent_module.AIMessage) and getattr(msg, "tool_calls", None):
+            if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
                 for tc in msg.tool_calls:
                     tc_id = tc.get("id")
                     raw_res = tool_results_by_id.get(tc_id, "")
@@ -108,6 +109,7 @@ async def handle_chat(req: ChatRequest):
                         "result": parsed_res,
                         "timestamp": time.strftime("%H:%M:%S")
                     })
+
         
         budget_info = {
             "user_budget": result_state.get("user_budget"),
