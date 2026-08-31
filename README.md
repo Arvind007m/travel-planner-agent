@@ -2,6 +2,9 @@
 
 An autonomous, multi-tool travel planning agent built with **LangGraph**, **Groq API** (`openai/gpt-oss-120b`), **Live External APIs**, and a **ChatGPT-style Web Interface**.
 
+- **Live Production URL (Vercel)**: [https://travelagent-6cejz6glm-arvinds-projects-9209355d.vercel.app](https://travelagent-6cejz6glm-arvinds-projects-9209355d.vercel.app)
+- **GitHub Repository**: [https://github.com/Arvind007m/travel-planner-agent](https://github.com/Arvind007m/travel-planner-agent)
+
 ---
 
 ## 1. System Architecture & Workflow
@@ -100,7 +103,7 @@ The project includes a web application built with HTML5, Vanilla CSS, and JavaSc
 
 2. Install dependencies:
    ```bash
-   pip install langgraph langchain-groq langchain-core pydantic python-dotenv requests python-dateutil fastapi uvicorn amadeus
+   pip install -r requirements.txt
    ```
 
 3. Create a `.env` file in the root directory:
@@ -114,20 +117,20 @@ The project includes a web application built with HTML5, Vanilla CSS, and JavaSc
 
 ---
 
-## 6. Running the Application
+## 6. Running Locally & On Vercel
 
-### Start the Web Interface
+### Start the Web Interface Locally
 ```bash
 python app.py
 ```
 Open your browser and navigate to: **[http://127.0.0.1:8000](http://127.0.0.1:8000)**
 
+### Deploying to Vercel via CLI
+```bash
+npx --yes vercel --prod --yes
+```
+
 ### Run the Automated CLI Test Suite
 ```bash
 python -u main.py
 ```
-
-The automated test suite runs three scenarios:
-1. **Multi-Tool Trip Planning**: *"Plan a 4-day trip from NYC to Lisbon in October under $1200"* (executes flights, hotels, weather, events, and budget validation).
-2. **Single-Tool Live Inquiry**: *"What's the weather like in Tokyo next week?"* (triggers weather forecast only, safely bypasses budget check).
-3. **Natural Language Budget Phrasing**: *"Plan a 4-day trip from London to Paris in October under a grand"* (structured LLM extraction of `$1000`, live Paris properties, and itinerary synthesis).
