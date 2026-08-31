@@ -598,20 +598,38 @@ class AgentState(TypedDict):
 # 4. GRAPH NODES & DETERMINISTIC CONTROL
 # ==========================================
 
-import time
+PRIMARY_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+FALLBACK_MODEL = "openai/gpt-oss-20b"
 
-def invoke_llm_with_retry(runnable, input_data, max_retries=5):
-    """Executes a runnable with exponential backoff on rate limits and connection errors."""
+
+def get_llm(model_name: str = PRIMARY_MODEL):
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise ValueError("GROQ_API_KEY is not set.")
+    return ChatGroq(model=model_name, api_key=api_key, temperature=0.0, request_timeout=60.0, max_retries=3)
+
+
+def invoke_llm_with_retry(runnable, input_data, max_retries=5, fallback_runnable=None):
+    """Executes a runnable with exponential backoff on rate limits and connection errors.
+    If a rate limit is exceeded on the primary model, switches to fallback model.
+    """
+    current_runnable = runnable
     for attempt in range(max_retries):
         try:
-            return runnable.invoke(input_data)
+            return current_runnable.invoke(input_data)
         except Exception as e:
             err_str = str(e).lower()
-            is_rate_limit = "429" in err_str or "rate_limit" in err_str or "tokens per minute" in err_str or "tpm" in err_str
+            is_rate_limit = "429" in err_str or "rate_limit" in err_str or "tokens per minute" in err_str or "tokens per day" in err_str or "tpd" in err_str or "tpm" in err_str
             is_connection = "connection error" in err_str or "timeout" in err_str or "disconnected" in err_str or "503" in err_str or "502" in err_str or "500" in err_str or "apiconnectionerror" in err_str
             
+            if is_rate_limit and fallback_runnable is not None and current_runnable != fallback_runnable:
+                print(f"\n[MODEL FALLBACK] Switching from {PRIMARY_MODEL} to {FALLBACK_MODEL} due to Groq quota limit...", flush=True)
+                current_runnable = fallback_runnable
+                time.sleep(1.0)
+                continue
+                
             if (is_rate_limit or is_connection) and attempt < max_retries - 1:
-                wait_sec = 2.5 * (attempt + 1)
+                wait_sec = 2.0 * (attempt + 1)
                 reason = "rate limit window" if is_rate_limit else "connection retry"
                 print(f"\n[RETRY BACKOFF] Waiting {wait_sec}s for Groq ({reason})...", flush=True)
                 time.sleep(wait_sec)
@@ -632,10 +650,14 @@ def extract_context_node(state: AgentState) -> dict:
     
     if api_key and user_msg_content:
         try:
-            llm = ChatGroq(model="openai/gpt-oss-120b", api_key=api_key, temperature=0.0, request_timeout=60.0, max_retries=3)
-            extractor = llm.with_structured_output(BudgetExtraction)
+            primary_llm = get_llm(PRIMARY_MODEL)
+            fallback_llm = get_llm(FALLBACK_MODEL)
+            
+            extractor = primary_llm.with_structured_output(BudgetExtraction)
+            fallback_extractor = fallback_llm.with_structured_output(BudgetExtraction)
+            
             sys_msg = SystemMessage(content="You are a data extractor. Extract the total numeric travel budget in USD into user_budget (convert 'a grand' to 1000, '1.5k' to 1500). If no budget constraint is mentioned, set user_budget to null.")
-            res = invoke_llm_with_retry(extractor, [sys_msg, HumanMessage(content=user_msg_content)])
+            res = invoke_llm_with_retry(extractor, [sys_msg, HumanMessage(content=user_msg_content)], fallback_runnable=fallback_extractor)
             if isinstance(res, BudgetExtraction):
                 extracted_budget = res.user_budget
             elif isinstance(res, dict):
@@ -656,13 +678,13 @@ def extract_context_node(state: AgentState) -> dict:
 
 
 def agent_node(state: AgentState) -> dict:
-    """Invokes Groq LLM (openai/gpt-oss-120b) bound with live tools and resets retry_pending flag."""
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY is not set.")
+    """Invokes Groq LLM bound with live tools and resets retry_pending flag."""
+    primary_llm = get_llm(PRIMARY_MODEL)
+    fallback_llm = get_llm(FALLBACK_MODEL)
     
-    llm = ChatGroq(model="openai/gpt-oss-120b", api_key=api_key, temperature=0.0, request_timeout=60.0, max_retries=3)
-    llm_with_tools = llm.bind_tools(ALL_TOOLS)
+    llm_with_tools = primary_llm.bind_tools(ALL_TOOLS)
+    fallback_with_tools = fallback_llm.bind_tools(ALL_TOOLS)
+
 
     
     system_prompt = (
@@ -679,7 +701,7 @@ def agent_node(state: AgentState) -> dict:
     if not any(isinstance(m, SystemMessage) for m in messages):
         messages = [SystemMessage(content=system_prompt)] + list(messages)
     
-    response = invoke_llm_with_retry(llm_with_tools, messages)
+    response = invoke_llm_with_retry(llm_with_tools, messages, fallback_runnable=fallback_with_tools)
     
     return {
         "messages": [response],
