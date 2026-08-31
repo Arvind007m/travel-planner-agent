@@ -51,7 +51,8 @@ async def health_check():
     has_openrouter = bool(os.getenv("OPENROUTER_API_KEY"))
     has_groq = bool(os.getenv("GROQ_API_KEY"))
     has_amadeus = bool(os.getenv("AMADEUS_CLIENT_ID") and os.getenv("AMADEUS_CLIENT_SECRET"))
-    active_provider = f"OpenRouter ({os.getenv('OPENROUTER_MODEL', 'openai/gpt-4o-mini')})" if has_openrouter else "Groq"
+    active_provider = f"OpenRouter ({os.getenv('OPENROUTER_MODEL', 'openai/gpt-4o-mini').strip()})" if has_openrouter else "Groq"
+
 
     return {
         "status": "healthy",
